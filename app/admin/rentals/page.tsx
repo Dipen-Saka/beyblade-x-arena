@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import RentalsManager from "@/components/admin/RentalsManager";
+import RentalsManager, { type RentalRow } from "@/components/admin/RentalsManager";
 
 export default async function RentalsPage() {
   const supabase = createClient();
@@ -10,7 +10,7 @@ export default async function RentalsPage() {
       id, status, created_at, user_id,
       rental_items (
         id, part_id,
-        parts ( id, name, type, image_url )
+        parts ( id, name, type, image_url, total_stock, available_stock, created_at )
       )
     `)
     .eq("status", "active")
@@ -23,11 +23,22 @@ export default async function RentalsPage() {
     .select("id, email")
     .in("id", userIds.length ? userIds : ["00000000-0000-0000-0000-000000000000"]);
 
-  const profileMap = Object.fromEntries((profiles || []).map((p) => [p.id, p.email]));
+  const profileMap = Object.fromEntries(
+    (profiles || []).map((p) => [p.id, p.email])
+  );
 
-  const enriched = (rentals || []).map((r) => ({
-    ...r,
+  // Supabase returns nested relations as arrays — normalise parts to single object
+  const enriched: RentalRow[] = (rentals || []).map((r) => ({
+    id: r.id,
+    status: r.status,
+    created_at: r.created_at,
+    user_id: r.user_id,
     user_email: profileMap[r.user_id] || "unknown",
+    rental_items: (r.rental_items || []).map((item: any) => ({
+      id: item.id,
+      part_id: item.part_id,
+      parts: Array.isArray(item.parts) ? item.parts[0] : item.parts,
+    })),
   }));
 
   return <RentalsManager initialRentals={enriched} />;

@@ -7,14 +7,14 @@ import PartImage from "@/components/ui/PartImage";
 import TypeBadge from "@/components/ui/TypeBadge";
 import Topbar from "@/components/ui/Topbar";
 
-interface RentalItem { id: string; part_id: string; parts: Part; }
-interface Rental {
+export interface RentalItem { id: string; part_id: string; parts: Part; }
+export interface RentalRow {
   id: string; status: string; created_at: string; user_id: string;
   user_email: string;
   rental_items: RentalItem[];
 }
 
-interface Props { initialRentals: Rental[]; }
+interface Props { initialRentals: RentalRow[]; }
 
 const SECTIONS: { type: PartType; label: string }[] = [
   { type: "blade",   label: "Blades"   },
@@ -24,7 +24,7 @@ const SECTIONS: { type: PartType; label: string }[] = [
 
 export default function RentalsManager({ initialRentals }: Props) {
   const supabase = createClient();
-  const [rentals, setRentals] = useState<Rental[]>(initialRentals);
+  const [rentals, setRentals] = useState<RentalRow[]>(initialRentals);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [loading, setLoading] = useState<string | null>(null);
   const [notification, setNotification] = useState("");
@@ -34,7 +34,7 @@ export default function RentalsManager({ initialRentals }: Props) {
     setTimeout(() => setNotification(""), 3000);
   };
 
-  const markReturned = async (rental: Rental) => {
+  const markReturned = async (rental: RentalRow) => {
     setLoading(rental.id);
     await supabase.from("rentals").update({ status: "returned" }).eq("id", rental.id);
     // Restore each part's stock
