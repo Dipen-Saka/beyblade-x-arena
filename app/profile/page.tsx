@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import ProfileUI from "@/components/user/ProfileUI";
 
 export default async function ProfilePage() {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
 
@@ -22,7 +22,6 @@ export default async function ProfilePage() {
 
   if (!raw) redirect("/assembly");
 
-  // Normalise: Supabase nested joins return parts as array — flatten to object
   const rental = {
     id: raw.id,
     status: raw.status,

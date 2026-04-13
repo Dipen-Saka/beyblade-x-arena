@@ -6,14 +6,13 @@ export async function GET(request: NextRequest) {
   const code = searchParams.get("code");
 
   if (code) {
-    const supabase = createClient();
+    const supabase = await createClient();
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) {
       const { data: { user } } = await supabase.auth.getUser();
       const isAdmin = user?.email === process.env.NEXT_PUBLIC_ADMIN_EMAIL;
       if (isAdmin) return NextResponse.redirect(`${origin}/admin`);
 
-      // Check for active rental
       const { data: rental } = await supabase
         .from("rentals")
         .select("id")

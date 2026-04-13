@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import RentalsManager, { type RentalRow } from "@/components/admin/RentalsManager";
 
 export default async function RentalsPage() {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const { data: rentals } = await supabase
     .from("rentals")
@@ -16,7 +16,6 @@ export default async function RentalsPage() {
     .eq("status", "active")
     .order("created_at", { ascending: false });
 
-  // fetch user emails separately via profiles table
   const userIds = (rentals || []).map((r) => r.user_id);
   const { data: profiles } = await supabase
     .from("profiles")
@@ -27,7 +26,6 @@ export default async function RentalsPage() {
     (profiles || []).map((p) => [p.id, p.email])
   );
 
-  // Supabase returns nested relations as arrays — normalise parts to single object
   const enriched: RentalRow[] = (rentals || []).map((r) => ({
     id: r.id,
     status: r.status,

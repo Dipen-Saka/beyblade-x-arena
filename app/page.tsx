@@ -14,7 +14,6 @@ export default function HomePage() {
       if (user) {
         const isAdmin = user.email === process.env.NEXT_PUBLIC_ADMIN_EMAIL;
         if (isAdmin) { router.replace("/admin"); return; }
-        // Check if player has active rental
         supabase
           .from("rentals")
           .select("id")

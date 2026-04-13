@@ -3,11 +3,10 @@ import { redirect } from "next/navigation";
 import AssemblyUI from "@/components/user/AssemblyUI";
 
 export default async function AssemblyPage() {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
 
-  // If already has active rental, go to profile
   const { data: rental } = await supabase
     .from("rentals")
     .select("id")
