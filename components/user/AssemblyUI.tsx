@@ -24,15 +24,14 @@ export default function AssemblyUI({ parts, userId, userEmail }: Props) {
   const [selected, setSelected] = useState<Record<PartType, Part[]>>({ blade: [], ratchet: [], bit: [] });
   const [search, setSearch] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
 
   const totalSelected = TYPES.reduce((s, t) => s + selected[t].length, 0);
   const progress = Math.round((totalSelected / 9) * 100);
 
   const filtered = useMemo(() =>
-    parts.filter(p =>
-      p.type === activeType &&
-      p.name.toLowerCase().includes(search.toLowerCase())
-    ), [parts, activeType, search]);
+    parts.filter(p => p.type === activeType && p.name.toLowerCase().includes(search.toLowerCase())),
+    [parts, activeType, search]);
 
   const togglePart = (part: Part) => {
     setSelected(prev => {
@@ -48,26 +47,40 @@ export default function AssemblyUI({ parts, userId, userEmail }: Props) {
 
   const confirmRental = async () => {
     setSubmitting(true);
+    setSubmitError("");
     const allParts = TYPES.flatMap(t => selected[t]);
-    // Create rental
-    const { data: rental, error } = await supabase
-      .from("rentals")
-      .insert({ user_id: userId, status: "active" })
-      .select("id")
-      .single();
-    if (error || !rental) { setSubmitting(false); alert("Error creating rental. Try again."); return; }
 
-    // Create rental items
-    await supabase.from("rental_items").insert(
-      allParts.map(p => ({ rental_id: rental.id, part_id: p.id }))
-    );
+    try {
+      // 1. Create rental record
+      const { data: rental, error: rentalError } = await supabase
+        .from("rentals")
+        .insert({ user_id: userId, status: "active" })
+        .select("id")
+        .single();
 
-    // Decrement available stock
-    for (const p of allParts) {
-      await supabase.rpc("decrement_stock", { part_id: p.id });
+      if (rentalError) throw new Error("Failed to create rental: " + rentalError.message);
+      if (!rental) throw new Error("No rental returned");
+
+      // 2. Create rental items
+      const { error: itemsError } = await supabase
+        .from("rental_items")
+        .insert(allParts.map(p => ({ rental_id: rental.id, part_id: p.id })));
+
+      if (itemsError) throw new Error("Failed to save rental items: " + itemsError.message);
+
+      // 3. Decrement stock for each part using direct update instead of RPC
+      for (const p of allParts) {
+        await supabase
+          .from("parts")
+          .update({ available_stock: Math.max(0, p.available_stock - 1) })
+          .eq("id", p.id);
+      }
+
+      router.replace("/profile");
+    } catch (err: any) {
+      setSubmitError(err.message || "Error creating rental. Try again.");
+      setSubmitting(false);
     }
-
-    router.replace("/profile");
   };
 
   return (
@@ -93,15 +106,13 @@ export default function AssemblyUI({ parts, userId, userEmail }: Props) {
                       {[0, 1, 2].map(i => {
                         const part = selected[type][i];
                         return (
-                          <motion.div
-                            key={i}
-                            layout
+                          <motion.div key={i} layout
                             className={`relative rounded-lg border-[1.5px] border-dashed ${part ? `${c.border} ${c.bg} ${c.glow} border-solid` : c.dash} flex flex-col items-center justify-center cursor-pointer transition-all`}
                             style={{ minHeight: 80 }}
-                            onClick={() => part && togglePart(part)}
-                          >
+                            onClick={() => part && togglePart(part)}>
                             {part ? (
-                              <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="flex flex-col items-center gap-1 p-2">
+                              <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+                                className="flex flex-col items-center gap-1 p-2">
                                 <PartImage src={part.image_url} name={part.name} type={part.type} size={48} />
                                 <span className="text-[9px] text-[#eeeef8] font-semibold text-center leading-tight px-1">
                                   {part.name.split(" ")[0]}
@@ -129,31 +140,29 @@ export default function AssemblyUI({ parts, userId, userEmail }: Props) {
                 <span className="font-orbitron text-sm text-[#f0b429]">{totalSelected} / 9</span>
               </div>
               <div className="bg-[#252538] rounded-full h-1.5 mb-4 overflow-hidden">
-                <motion.div
-                  className="h-full bg-[#f0b429] rounded-full"
-                  animate={{ width: `${progress}%` }}
-                  transition={{ duration: 0.3 }}
-                />
+                <motion.div className="h-full bg-[#f0b429] rounded-full"
+                  animate={{ width: `${progress}%` }} transition={{ duration: 0.3 }} />
               </div>
-              {/* Per-type progress */}
               {TYPES.map(t => {
                 const c = TYPE_COLORS[t];
                 return (
                   <div key={t} className="flex items-center gap-2 mb-1.5">
                     <span className={`font-orbitron text-[8px] w-14 ${c.text}`}>{t.toUpperCase()}</span>
                     <div className="flex-1 bg-[#252538] rounded-full h-1 overflow-hidden">
-                      <div className={`h-full rounded-full transition-all ${t === 'blade' ? 'bg-[#f0b429]' : t === 'ratchet' ? 'bg-[#3b82f6]' : 'bg-[#ef4444]'}`}
+                      <div className={`h-full rounded-full transition-all ${t === "blade" ? "bg-[#f0b429]" : t === "ratchet" ? "bg-[#3b82f6]" : "bg-[#ef4444]"}`}
                         style={{ width: `${(selected[t].length / 3) * 100}%` }} />
                     </div>
                     <span className="font-orbitron text-[9px] text-[#55556a] w-6">{selected[t].length}/3</span>
                   </div>
                 );
               })}
-              <button
-                onClick={confirmRental}
-                disabled={totalSelected < 9 || submitting}
-                className="w-full mt-4 bg-[#f0b429]/10 border border-[#f0b429]/40 text-[#f5c842] font-orbitron text-[10px] tracking-[2px] rounded-lg py-3 font-bold hover:bg-[#f0b429]/20 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-              >
+              {submitError && (
+                <div className="mt-3 bg-[#ef4444]/10 border border-[#ef4444]/30 rounded-lg px-3 py-2 text-[11px] text-[#f87171]">
+                  {submitError}
+                </div>
+              )}
+              <button onClick={confirmRental} disabled={totalSelected < 9 || submitting}
+                className="w-full mt-4 bg-[#f0b429]/10 border border-[#f0b429]/40 text-[#f5c842] font-orbitron text-[10px] tracking-[2px] rounded-lg py-3 font-bold hover:bg-[#f0b429]/20 transition-all disabled:opacity-30 disabled:cursor-not-allowed">
                 {submitting ? "CONFIRMING..." : "CONFIRM RENTAL"}
               </button>
             </div>
@@ -162,8 +171,6 @@ export default function AssemblyUI({ parts, userId, userEmail }: Props) {
           {/* RIGHT — PARTS GRID */}
           <div className="bg-[#161625] border border-[#2a2a42] rounded-xl p-4">
             <div className="font-orbitron text-[9px] tracking-[2px] text-[#55556a] mb-3">PARTS GRID</div>
-
-            {/* Type filter */}
             <div className="flex gap-2 mb-3">
               {TYPES.map(t => {
                 const c = TYPE_COLORS[t];
@@ -176,15 +183,9 @@ export default function AssemblyUI({ parts, userId, userEmail }: Props) {
                 );
               })}
             </div>
-
-            {/* Search */}
-            <input
-              value={search} onChange={e => setSearch(e.target.value)}
+            <input value={search} onChange={e => setSearch(e.target.value)}
               placeholder="Search parts..."
-              className="w-full bg-[#1e1e30] border border-[#2a2a42] focus:border-[#353555] rounded-lg px-3 py-2 text-sm text-[#eeeef8] outline-none transition-colors mb-3 placeholder-[#55556a]"
-            />
-
-            {/* Grid */}
+              className="w-full bg-[#1e1e30] border border-[#2a2a42] focus:border-[#353555] rounded-lg px-3 py-2 text-sm text-[#eeeef8] outline-none transition-colors mb-3 placeholder-[#55556a]" />
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 max-h-[480px] overflow-y-auto pr-1">
               <AnimatePresence>
                 {filtered.map(part => {
@@ -192,18 +193,12 @@ export default function AssemblyUI({ parts, userId, userEmail }: Props) {
                   const c = TYPE_COLORS[part.type];
                   const full = selected[part.type].length >= 3 && !sel;
                   return (
-                    <motion.div
-                      key={part.id}
-                      layout
-                      initial={{ opacity: 0, scale: 0.9 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.9 }}
+                    <motion.div key={part.id} layout
+                      initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
                       onClick={() => !full && togglePart(part)}
                       className={`relative rounded-xl border p-3 flex flex-col items-center gap-2 cursor-pointer transition-all
                         ${sel ? `${c.border} ${c.bg} ${c.glow}` : "border-[#2a2a42] bg-[#1e1e30] hover:border-[#353555]"}
-                        ${full ? "opacity-40 cursor-not-allowed" : ""}
-                      `}
-                    >
+                        ${full ? "opacity-40 cursor-not-allowed" : ""}`}>
                       {sel && (
                         <div className={`absolute top-1.5 right-1.5 w-4 h-4 rounded-full ${c.border} ${c.bg} flex items-center justify-center`}>
                           <span className={`text-[8px] font-bold ${c.text}`}>✓</span>
