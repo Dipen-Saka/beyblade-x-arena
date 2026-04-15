@@ -10,23 +10,49 @@ export default function HomePage() {
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) {
-        const isAdmin = user.email === process.env.NEXT_PUBLIC_ADMIN_EMAIL;
-        if (isAdmin) { router.replace("/admin"); return; }
-        supabase
-          .from("rentals")
-          .select("id")
-          .eq("user_id", user.id)
-          .eq("status", "active")
-          .maybeSingle()
-          .then(({ data }) => {
-            router.replace(data ? "/profile" : "/assembly");
-          });
-      } else {
+    const check = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (!session) { setChecking(false); return; }
+
+      // Check if session is older than 6 hours
+      const SIX_HOURS = 6 * 60 * 60;
+      const now = Math.floor(Date.now() / 1000);
+      const sessionAge = now - (session.user.last_sign_in_at
+        ? Math.floor(new Date(session.user.last_sign_in_at).getTime() / 1000)
+        : 0);
+
+      if (sessionAge > SIX_HOURS) {
+        await supabase.auth.signOut();
         setChecking(false);
+        return;
+      }
+
+      const user = session.user;
+      const isAdmin = user.email === process.env.NEXT_PUBLIC_ADMIN_EMAIL;
+      if (isAdmin) { router.replace("/admin"); return; }
+
+      // Check active rental — keeps data consistent on re-login
+      const { data: rental } = await supabase
+        .from("rentals")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("status", "active")
+        .maybeSingle();
+
+      router.replace(rental ? "/profile" : "/assembly");
+    };
+
+    check();
+
+    // Listen for auth state changes (logout from other tabs, token expiry)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_OUT" || event === "TOKEN_REFRESHED") {
+        if (event === "SIGNED_OUT") setChecking(false);
       }
     });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   if (checking) {

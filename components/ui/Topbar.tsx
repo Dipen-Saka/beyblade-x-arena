@@ -28,11 +28,11 @@ export default function Topbar({ title, userLabel, roleLabel }: TopbarProps) {
         </span>
         <div className="flex items-center gap-2 bg-[#161625] border border-[#2a2a42] rounded-lg px-3 py-1.5">
           <div className="w-1.5 h-1.5 rounded-full bg-[#22c55e] flex-shrink-0" />
-          <span className="text-[11px] text-[#9898b8]">{userLabel}</span>
+          <span className="text-[11px] text-[#9898b8] max-w-[160px] truncate">{userLabel}</span>
         </div>
         <button
           onClick={handleLogout}
-          className="text-[10px] text-[#55556a] hover:text-[#9898b8] transition-colors font-orbitron tracking-wider"
+          className="text-[10px] text-[#55556a] hover:text-[#f87171] transition-colors font-orbitron tracking-wider border border-[#2a2a42] hover:border-[#ef4444]/40 px-2.5 py-1 rounded-lg"
         >
           LOGOUT
         </button>
